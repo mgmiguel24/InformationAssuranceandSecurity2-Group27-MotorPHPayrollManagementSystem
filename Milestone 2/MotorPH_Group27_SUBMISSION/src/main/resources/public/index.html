@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MotorPH Payroll</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2433; --muted:#667085; --line:#e4e7ec; --brand:#c8102e; --ok:#067647; --bad:#b42318; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--ink); color:#fff; padding:14px 24px; display:flex; justify-content:space-between; align-items:center; }
+  header b { color:#fff; letter-spacing:.3px; } header b span { color:var(--brand); }
+  main { max-width:980px; margin:24px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:18px; }
+  h2 { margin:0 0 12px; font-size:17px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:8px 0 4px; }
+  input { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:7px; font-size:14px; }
+  button { background:var(--brand); color:#fff; border:0; border-radius:7px; padding:9px 16px; font-weight:600; cursor:pointer; margin-top:12px; }
+  button.ghost { background:transparent; border:1px solid #fff5; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:12px; }
+  th,td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; }
+  .msg { font-size:13px; margin-top:10px; min-height:18px; }
+  .msg.err { color:var(--bad); } .msg.ok { color:var(--ok); }
+  .hidden { display:none; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .hint { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <b>Motor<span>PH</span> Payroll</b>
+  <div id="who" class="hidden"><span id="whoText"></span> <button class="ghost" id="logoutBtn">Log out</button></div>
+</header>
+<main>
+  <section class="card" id="loginCard">
+    <h2>Sign in</h2>
+    <form id="loginForm">
+      <label for="u">Username</label><input id="u" autocomplete="username" required>
+      <label for="p">Password</label><input id="p" type="password" autocomplete="current-password" required>
+      <button type="submit">Log in</button>
+      <div class="msg" id="loginMsg"></div>
+    </form>
+  </section>
+
+  <div id="app" class="hidden">
+    <section class="card" id="searchCard">
+      <h2>Employee search</h2>
+      <form id="searchForm" class="row" style="align-items:end">
+        <div><label for="q">Name or department</label><input id="q" placeholder="e.g. Garcia, HR"></div>
+        <div><button type="submit">Search</button></div>
+      </form>
+      <div class="msg" id="searchMsg"></div>
+      <table id="empTable"><thead><tr><th>ID</th><th>Name</th><th>Position</th><th>Department</th><th class="num">Basic salary</th><th class="num">Hourly rate</th></tr></thead><tbody></tbody></table>
+    </section>
+
+    <section class="card" id="computeCard">
+      <h2>Compute payroll</h2>
+      <form id="computeForm">
+        <div class="row">
+          <div><label for="cEmp">Employee ID</label><input id="cEmp" required></div>
+          <div><label for="cStart">Period start</label><input id="cStart" type="date" required></div>
+          <div><label for="cEnd">Period end</label><input id="cEnd" type="date" required></div>
+          <div><label for="cHours">Hours worked</label><input id="cHours" required value="160"></div>
+        </div>
+        <button type="submit">Compute and save</button>
+      </form>
+      <div class="msg" id="computeMsg"></div>
+      <table id="slipTable" class="hidden"><tbody></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Payslip history</h2>
+      <form id="histForm" class="row" style="align-items:end">
+        <div><label for="hEmp">Employee ID</label><input id="hEmp" required></div>
+        <div><button type="submit">Load</button></div>
+      </form>
+      <div class="msg" id="histMsg"></div>
+      <table id="histTable"><thead><tr><th>Period</th><th class="num">Hours</th><th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net pay</th></tr></thead><tbody></tbody></table>
+    </section>
+    <p class="hint">All values are rendered with textContent, so data from the database can never run as script.</p>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const peso = n => '₱' + Number(n).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+async function api(method, url, data) {
+  const opt = { method, credentials:'same-origin', headers:{} };
+  if (data) { opt.headers['Content-Type'] = 'application/x-www-form-urlencoded'; opt.body = new URLSearchParams(data); }
+  const res = await fetch(url, opt);
+  const body = await res.json().catch(() => ({ error:'Unexpected response' }));
+  if (!res.ok) { const e = new Error(body.error || ('HTTP ' + res.status)); e.status = res.status; throw e; }
+  return body;
+}
+function msg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+function row(tbody, cells, numFrom) {
+  const tr = document.createElement('tr');
+  cells.forEach((c, i) => { const td = document.createElement('td'); td.textContent = c; if (i >= numFrom) td.className = 'num'; tr.appendChild(td); });
+  tbody.appendChild(tr);
+}
+function showApp(user) {
+  $('loginCard').classList.add('hidden'); $('app').classList.remove('hidden'); $('who').classList.remove('hidden');
+  $('whoText').textContent = user.username + ' (' + user.role + ')';
+  const staff = user.role === 'ADMIN' || user.role === 'HR';
+  $('searchCard').classList.toggle('hidden', !staff);
+  $('computeCard').classList.toggle('hidden', !staff);
+  if (!staff) { $('hEmp').value = user.employeeId; $('hEmp').readOnly = true; }
+}
+
+$('loginForm').onsubmit = async e => {
+  e.preventDefault();
+  try { const u = await api('POST', '/api/login', { username:$('u').value, password:$('p').value }); $('p').value=''; showApp(u); }
+  catch (err) { msg($('loginMsg'), err.message + ' (HTTP ' + err.status + ')'); }
+};
+$('logoutBtn').onclick = async () => { await api('POST', '/api/logout').catch(()=>{}); location.reload(); };
+
+$('searchForm').onsubmit = async e => {
+  e.preventDefault();
+  const tb = $('empTable').tBodies[0]; tb.innerHTML = '';
+  try {
+    const list = await api('GET', '/api/employees?q=' + encodeURIComponent($('q').value));
+    list.forEach(x => row(tb, [x.employeeId, x.name, x.position, x.department, peso(x.basicSalary), peso(x.hourlyRate)], 4));
+    msg($('searchMsg'), list.length + ' record(s) found.', true);
+  } catch (err) { msg($('searchMsg'), err.message + ' (HTTP ' + err.status + ')'); }
+};
+
+$('computeForm').onsubmit = async e => {
+  e.preventDefault();
+  const t = $('slipTable'), tb = t.tBodies[0]; tb.innerHTML = ''; t.classList.add('hidden');
+  try {
+    const s = await api('POST', '/api/payroll/compute', { employeeId:$('cEmp').value, periodStart:$('cStart').value, periodEnd:$('cEnd').value, hoursWorked:$('cHours').value });
+    [['Employee', s.employeeName], ['Period', s.periodStart + ' to ' + s.periodEnd], ['Hours worked', s.hoursWorked],
+     ['Basic pay', peso(s.basicPay)], ['Allowances', peso(s.allowances)], ['Gross pay', peso(s.grossPay)],
+     ['SSS', peso(s.sss)], ['PhilHealth', peso(s.philhealth)], ['Pag-IBIG', peso(s.pagibig)],
+     ['Withholding tax', peso(s.withholdingTax)], ['Net pay', peso(s.netPay)]].forEach(r => row(tb, r, 1));
+    t.classList.remove('hidden'); msg($('computeMsg'), 'Payslip saved.', true);
+  } catch (err) { msg($('computeMsg'), err.message + ' (HTTP ' + err.status + ')'); }
+};
+
+$('histForm').onsubmit = async e => {
+  e.preventDefault();
+  const tb = $('histTable').tBodies[0]; tb.innerHTML = '';
+  try {
+    const list = await api('GET', '/api/payroll/history?employeeId=' + encodeURIComponent($('hEmp').value));
+    list.forEach(s => row(tb, [s.periodStart + ' to ' + s.periodEnd, s.hoursWorked, peso(s.grossPay),
+      peso(Number(s.sss) + Number(s.philhealth) + Number(s.pagibig) + Number(s.withholdingTax)), peso(s.netPay)], 1));
+    msg($('histMsg'), list.length + ' payslip(s).', true);
+  } catch (err) { msg($('histMsg'), err.message + ' (HTTP ' + err.status + ')'); }
+};
+</script>
+</body>
+</html>
