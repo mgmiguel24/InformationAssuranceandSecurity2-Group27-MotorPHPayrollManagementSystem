@@ -11,10 +11,10 @@ This repository holds the security artifacts, evidence, and source code for our 
 
 | Folder | What is inside |
 |---|---|
-| `00_Reference/` | IAS 1 artifacts we built on |
-| `01_Milestone1_Security_Plan/` | Security Controls Audit Worksheet, Security Implementation Plan, Implementation Execution Workflow |
-| `02_Milestone2_Implementation/` | Implementation Log, Security Solution Evaluation Package, architecture diagram, test evidence |
-| `03_Source_Code/` | Final submitted source code |
+| `Archive/` | IAS 1 artifacts we built on |
+| `Milestone 1/` | Security Controls Audit Worksheet, Security Implementation Plan, Implementation Execution Workflow |
+| `Milestone 2/` | Implementation Log, Security Solution Evaluation Package, architecture diagram, test evidence |
+| `Terminal Assessment/` | Working Output for Terminal Assessment |
 
 ---
 
